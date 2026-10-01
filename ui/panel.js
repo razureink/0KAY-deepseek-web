@@ -22,6 +22,8 @@ const DEFAULTS = {
   probe_interval_ms: 1800000,
   max_ref_images: 24,
   context_mode: 'full',
+  accounts: '[]',
+  active_account: '',
 }
 
 export default defineComponent({
@@ -89,6 +91,57 @@ export default defineComponent({
       }
     }
 
+    const accountProbe = ref({})
+    const accountsList = () => {
+      try {
+        const arr = JSON.parse(values.accounts || '[]')
+        return Array.isArray(arr) ? arr : []
+      } catch {
+        return []
+      }
+    }
+    const setAccounts = (list) => { values.accounts = JSON.stringify(list) }
+    const mask = (token) => {
+      const t = String(token || '').replace(/^Bearer\s+/i, '')
+      return t ? (t.length > 8 ? `${t.slice(0, 4)}****${t.slice(-4)}` : '****') : ''
+    }
+    async function switchAccount(id) {
+      values.active_account = id
+      await save()
+      await probeNow()
+    }
+    async function addAccount() {
+      const label = window.prompt('账号备注（可空）', '')
+      if (label === null) return
+      const token = window.prompt('粘贴 Bearer Token')
+      if (!token || !token.trim()) return
+      const id = `acc_${Date.now().toString(36)}`
+      const list = accountsList()
+      list.push({ id, label: (label || '').trim() || mask(token), token: token.replace(/^Bearer\s+/i, '').trim() })
+      setAccounts(list)
+      if (!values.active_account) values.active_account = id
+      await save()
+    }
+    async function removeAccount(id) {
+      const list = accountsList().filter((account) => account.id !== id)
+      setAccounts(list)
+      if (values.active_account === id) values.active_account = list[0]?.id || ''
+      await save()
+    }
+    async function probeAll() {
+      const results = {}
+      for (const account of accountsList()) {
+        try {
+          const res = await fetch(PROBE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: account.token }) })
+          const data = await res.json()
+          results[account.id] = data.ok ? `✅ ${data.account || 'ok'}` : `❌ ${data.error || ''}`
+        } catch (e) {
+          results[account.id] = `❌ ${e?.message || e}`
+        }
+      }
+      accountProbe.value = results
+    }
+
     onMounted(async () => {
       await load()
       await probeNow()
@@ -138,7 +191,25 @@ export default defineComponent({
         field('auth_file', '凭据文件', '留空默认 ~/.dsh/web-login/deepseek-auth.json。'),
         h('div', { class: 'dw-actions' }, [h('button', { class: 'dw-btn tonal', onClick: probeNow }, '刷新状态 / 连通性测试')]),
       ]),
-      note('本插件由 Core 以 stdio 子进程承载，没有 Electron 登录窗：请用「手动 Token」或复用 DSH 捕获的凭据文件。（「浏览器登录 / 账号库 / 退出账号」属于 DSH 桌面插件的窗口能力，这里不适用。）'),
+      card('账号库', [
+        note('多账号并存与一键切换；当前账号用于所有请求。token 存在 Core 本地 settings.json。'),
+        ...accountsList().map((account) => h('div', { class: ['dw-acc', { active: account.id === values.active_account }] }, [
+          h('div', { class: 'dw-acc-info' }, [
+            h('span', { class: 'dw-acc-label' }, account.label || mask(account.token)),
+            h('span', { class: 'dw-acc-token' }, mask(account.token)),
+          ]),
+          h('span', { class: 'dw-acc-state' }, account.id === values.active_account ? '当前' : ''),
+          accountProbe.value[account.id] ? h('span', { class: 'dw-acc-probe' }, accountProbe.value[account.id]) : null,
+          account.id !== values.active_account ? h('button', { class: 'dw-btn small tonal', onClick: () => switchAccount(account.id) }, '切换') : null,
+          h('button', { class: 'dw-btn small danger', onClick: () => removeAccount(account.id) }, '移除'),
+        ])),
+        accountsList().length === 0 ? note('还没有账号：点「添加账号」粘 token，或直接用下面的「手动 Token」。') : null,
+        h('div', { class: 'dw-actions' }, [
+          h('button', { class: 'dw-btn tonal', onClick: addAccount }, '添加账号'),
+          h('button', { class: 'dw-btn tonal', onClick: probeAll }, '探活全部'),
+        ]),
+      ]),
+      note('本插件由 Core 以 stdio 子进程承载，没有 Electron 登录窗：账号请用「手动 Token / 账号库」或复用 DSH 捕获的凭据文件。（「浏览器登录 / 从已登录窗口恢复」属于 DSH 桌面插件的窗口能力，这里不适用。）'),
     ]
 
     const modelTab = () => [
@@ -256,7 +327,16 @@ export default defineComponent({
 .deepseek-web-panel .dw-toggle{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:var(--md-on-surface);flex-wrap:wrap}
 .deepseek-web-panel .dw-toggle input{width:18px;height:18px;accent-color:var(--md-primary)}
 .deepseek-web-panel .dw-toggle .dw-help{flex-basis:100%;font-weight:400}
-.deepseek-web-panel .dw-actions{display:flex;gap:10px;margin-top:4px}
+.deepseek-web-panel .dw-actions{display:flex;gap:10px;margin-top:4px;flex-wrap:wrap}
+.deepseek-web-panel .dw-acc{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;border:1px solid var(--md-outline-variant);background:var(--md-surface-container-high)}
+.deepseek-web-panel .dw-acc.active{border-color:var(--md-primary)}
+.deepseek-web-panel .dw-acc-info{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.deepseek-web-panel .dw-acc-label{font-size:13.5px;font-weight:650;overflow-wrap:anywhere}
+.deepseek-web-panel .dw-acc-token{font-size:11.5px;color:var(--md-on-surface-variant);font-family:ui-monospace,monospace}
+.deepseek-web-panel .dw-acc-state{font-size:11.5px;font-weight:700;color:var(--md-primary);flex-shrink:0}
+.deepseek-web-panel .dw-acc-probe{font-size:12px;flex-shrink:0}
+.deepseek-web-panel .dw-btn.small{height:32px;padding:0 14px;font-size:13px}
+.deepseek-web-panel .dw-btn.danger{background:var(--md-error-container);color:#410e0b}
 .deepseek-web-panel .dw-note{margin:0;font-size:12.5px;line-height:1.6;color:var(--md-on-surface-variant)}
 .deepseek-web-panel .dw-btn{height:42px;padding:0 20px;border:1px solid transparent;border-radius:999px;font-weight:700;font-size:14px;cursor:pointer;background:var(--md-surface-container-high);color:var(--md-on-surface)}
 .deepseek-web-panel .dw-btn.tonal{background:var(--md-secondary-container);color:var(--md-on-secondary-container)}

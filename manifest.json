@@ -1,13 +1,13 @@
 {
   "schema": 1,
   "name": "@razureink/0kay-deepseek-web",
-  "version": "0.3.1",
-  "description": "DeepSeek 网页版（chat.deepseek.com 登录态，无需 API Key）作�?OpenAI 兼容�?0KAY provider。由 Core �?stdio 子进程承载（不监听端口）。请�?PoW/SSE 流程移植�?cv-superding/dsh-deepseek-web-login（Apache-2.0）�?,
+  "version": "0.4.0",
+  "description": "DeepSeek 网页版（chat.deepseek.com 登录态，无需 API Key）作为 OpenAI 兼容的 0KAY provider。由 Core 以 stdio 子进程承载（不监听端口）。请求/PoW/SSE 流程移植自 cv-superding/dsh-deepseek-web-login（Apache-2.0）。",
   "repository": "https://github.com/razureink/0KAY-deepseek-web.git",
   "install": [],
   "provider": {
     "id": "deepseek-web",
-    "name": "DeepSeek 网页版（免费�?,
+    "name": "DeepSeek 网页版（免费）",
     "models": ["deepseek-web-chat", "deepseek-web-reasoner"],
     "default_model": "deepseek-web-chat",
     "route": "/v1",
@@ -15,25 +15,27 @@
   },
   "settings": {
     "id": "deepseek-web",
-    "label": "DeepSeek 网页�?,
+    "label": "DeepSeek 网页版",
     "icon": "cloud",
     "order": 82,
     "description": "DeepSeek 网页版（chat.deepseek.com 登录态）provider 设置",
     "fields": [
       { "key": "token", "type": "text", "label": "Bearer Token", "default_value": "" },
       { "key": "auth_file", "type": "text", "label": "凭据文件", "default_value": "" },
+      { "key": "accounts", "type": "text", "label": "账号库", "default_value": "[]" },
+      { "key": "active_account", "type": "text", "label": "当前账号", "default_value": "" },
       { "key": "default_model", "type": "select", "label": "默认模型", "default_value": "deepseek-web-chat", "options": ["deepseek-web-chat", "deepseek-web-reasoner"] },
       { "key": "max_prompt_chars", "type": "number", "label": "Prompt 字符上限", "default_value": "400000" },
       { "key": "min_request_interval_ms", "type": "number", "label": "请求间隔下限(ms)", "default_value": "2000" },
       { "key": "max_request_interval_ms", "type": "number", "label": "请求间隔上限(ms)", "default_value": "4000" },
       { "key": "allow_concurrent", "type": "bool", "label": "允许并发", "default_value": "false" },
-      { "key": "idle_timeout_ms", "type": "number", "label": "流空闲超�?ms)", "default_value": "120000" },
+      { "key": "idle_timeout_ms", "type": "number", "label": "流空闲超时(ms)", "default_value": "120000" },
       { "key": "auto_continue", "type": "bool", "label": "自动续写", "default_value": "true" },
-      { "key": "max_continuations", "type": "number", "label": "最大续写轮�?, "default_value": "2" },
+      { "key": "max_continuations", "type": "number", "label": "最大续写轮数", "default_value": "2" },
       { "key": "session_cleanup", "type": "select", "label": "临时会话清理", "default_value": "deferred", "options": ["deferred", "immediate", "keep"] },
       { "key": "probe_interval_ms", "type": "number", "label": "探活间隔(ms)", "default_value": "1800000" },
       { "key": "max_ref_images", "type": "number", "label": "最多引用图片数", "default_value": "24" },
-      { "key": "context_mode", "type": "select", "label": "上下文投�?, "default_value": "full", "options": ["full", "chained"] }
+      { "key": "context_mode", "type": "select", "label": "上下文投喂", "default_value": "full", "options": ["full", "chained"] }
     ]
   },
   "ui": {

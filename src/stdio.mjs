@@ -7,7 +7,7 @@
  *                {"id","type":"chunk","data"}
  *                {"id","type":"end"} | {"id","type":"error","error"}
  */
-import { loadAuth, loadCoreSettings, getSettings } from './auth.mjs'
+import { loadAuth, loadCoreSettings, getSettings, authFromAccount } from './auth.mjs'
 import { probe } from './deepseek.mjs'
 import { modelsPayload, openaiStream, openaiJSON } from './openai.mjs'
 
@@ -54,7 +54,9 @@ async function handle(request) {
       return
     }
     if (method === 'POST' && path === '/v1/probe') {
-      const auth = loadAuth()
+      const auth = (typeof body.token === 'string' && body.token.trim())
+        ? authFromAccount({ token: body.token, cookie: body.cookie })
+        : loadAuth()
       head(id, 200, { 'content-type': 'application/json' })
       let payload
       if (!auth) payload = { ok: false, error: 'not logged in' }

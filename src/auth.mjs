@@ -23,6 +23,8 @@ export const DEFAULTS = {
   probeIntervalMs: 1800000,
   maxRefImages: 24,
   contextMode: 'full',
+  accounts: '[]',
+  activeAccount: '',
 }
 
 let settings = { ...DEFAULTS }
@@ -68,6 +70,8 @@ export async function loadCoreSettings() {
       probeIntervalMs: asInt(values.probe_interval_ms, DEFAULTS.probeIntervalMs),
       maxRefImages: asInt(values.max_ref_images, DEFAULTS.maxRefImages),
       contextMode: asString(values.context_mode, DEFAULTS.contextMode),
+      accounts: typeof values.accounts === 'string' ? values.accounts : DEFAULTS.accounts,
+      activeAccount: asString(values.active_account, ''),
     }
   } catch {
     /* keep previous */
@@ -84,12 +88,43 @@ export function authFilePath() {
   return settings.authFile || process.env.DEEPSEEK_WEB_AUTH_FILE || path.join(os.homedir(), '.dsh', 'web-login', 'deepseek-auth.json')
 }
 
+/** The configured account pool (parsed from the `accounts` JSON setting). */
+export function getAccounts() {
+  try {
+    const arr = JSON.parse(settings.accounts || '[]')
+    return Array.isArray(arr) ? arr : []
+  } catch {
+    return []
+  }
+}
+
+/** Build an auth object from one account-pool entry. */
+export function authFromAccount(account) {
+  const token = String(account?.token || '').replace(/^Bearer\s+/i, '').trim()
+  if (!token) return null
+  return {
+    token,
+    cookie: typeof account.cookie === 'string' ? account.cookie : '',
+    userAgent: typeof account.userAgent === 'string' ? account.userAgent : '',
+    hifDliq: account.hifDliq || '',
+    hifLeim: account.hifLeim || '',
+    extraHeaders: account.extraHeaders && typeof account.extraHeaders === 'object' ? account.extraHeaders : {},
+    wasmUrl: typeof account.wasmUrl === 'string' ? account.wasmUrl : '',
+  }
+}
+
 /**
- * Load the DeepSeek web login credentials. Priority: Core settings token →
- * DEEPSEEK_WEB_TOKEN → the DSH plugin's captured auth JSON.
+ * Load the DeepSeek web login credentials. Priority: the active account-pool
+ * entry → Core settings token → DEEPSEEK_WEB_TOKEN → the captured auth JSON.
  * Returns null when nothing usable is found.
  */
 export function loadAuth() {
+  const accounts = getAccounts()
+  const active = accounts.find((account) => account.id === settings.activeAccount) || accounts[0]
+  if (active) {
+    const fromAccount = authFromAccount(active)
+    if (fromAccount) return fromAccount
+  }
   let raw = {}
   try {
     raw = JSON.parse(fs.readFileSync(authFilePath(), 'utf8'))

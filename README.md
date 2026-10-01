@@ -45,6 +45,8 @@ Core 读取已安装包的 `provider` 块，拉起子进程，并把 provider �
 |---|---|---|
 | `token` | 空 | Bearer Token（F12 从 chat.deepseek.com 请求里取） |
 | `auth_file` | 空 | 凭据文件路径（默认 `~/.dsh/web-login/deepseek-auth.json`） |
+| `accounts` | `[]` | 账号库（JSON 数组 `{id,label,token,...}`），由面板「账号库」维护 |
+| `active_account` | 空 | 当前账号 id；所有请求用它，未设则用 `token`/`auth_file` |
 | `default_model` | `deepseek-web-chat` | 未指定模型时使用 |
 | `max_prompt_chars` | `400000` | prompt 字符上限（中段截断） |
 | `min/max_request_interval_ms` | `2000/4000` | 两次调用的随机间隔区间（从上次结束算起） |

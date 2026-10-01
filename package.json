@@ -1,20 +1,14 @@
 {
   "name": "@razureink/0kay-deepseek-web",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "type": "module",
-  "description": "OpenAI-compatible 0KAY plugin that drives chat.deepseek.com web models via a captured browser login (no API key).",
+  "description": "OpenAI-compatible 0KAY plugin that drives chat.deepseek.com web models via a captured browser login (no API key), hosted by Core over stdio.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/razureink/0KAY-deepseek-web.git"
   },
-  "keywords": [
-    "0kay",
-    "0kay-plugin",
-    "deepseek",
-    "provider",
-    "openai-compatible"
-  ],
+  "keywords": ["0kay", "0kay-plugin", "deepseek", "provider", "openai-compatible"],
   "scripts": {
     "start": "node src/stdio.mjs",
     "serve": "node src/server.mjs",
