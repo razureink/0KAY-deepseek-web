@@ -7,9 +7,14 @@
  *                {"id","type":"chunk","data"}
  *                {"id","type":"end"} | {"id","type":"error","error"}
  */
-import { loadAuth } from './auth.mjs'
+import { loadAuth, loadCoreSettings } from './auth.mjs'
 import { probe } from './deepseek.mjs'
 import { modelsPayload, openaiStream, openaiJSON } from './openai.mjs'
+
+// Read the settings the user configured in Core, and refresh periodically so a
+// token change in the WebUI takes effect without restarting the child.
+await loadCoreSettings().catch(() => {})
+setInterval(() => { void loadCoreSettings() }, 60000).unref()
 
 const write = (obj) => process.stdout.write(JSON.stringify(obj) + '\n')
 const head = (id, status, headers = {}) => write({ id, type: 'head', status, headers })

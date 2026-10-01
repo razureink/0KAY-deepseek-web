@@ -1,6 +1,6 @@
 {
   "name": "@razureink/0kay-deepseek-web",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "OpenAI-compatible 0KAY plugin that drives chat.deepseek.com web models via a captured browser login (no API key).",
   "license": "Apache-2.0",

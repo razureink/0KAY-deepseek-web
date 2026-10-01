@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "name": "@razureink/0kay-deepseek-web",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "DeepSeek 网页版（chat.deepseek.com 登录态，无需 API Key）作为 OpenAI 兼容的 0KAY provider。由 Core 以 stdio 子进程承载（不监听端口）。请求/PoW/SSE 流程移植自 cv-superding/dsh-deepseek-web-login（Apache-2.0）。",
   "repository": "https://github.com/razureink/0KAY-deepseek-web.git",
   "install": [],
@@ -12,6 +12,29 @@
     "default_model": "deepseek-web-chat",
     "route": "/v1",
     "stdio": ["node", "src/stdio.mjs"]
+  },
+  "settings": {
+    "id": "deepseek-web",
+    "label": "DeepSeek 网页版",
+    "icon": "cloud",
+    "order": 82,
+    "description": "DeepSeek 网页版（chat.deepseek.com 登录态）provider 设置",
+    "fields": [
+      {
+        "key": "token",
+        "type": "text",
+        "label": "Bearer Token",
+        "default_value": "",
+        "help": "登录 chat.deepseek.com 后从 F12 网络请求里取 Authorization 的值（去掉 Bearer 前缀也可）。留空则用凭据文件。"
+      },
+      {
+        "key": "auth_file",
+        "type": "text",
+        "label": "凭据文件",
+        "default_value": "",
+        "help": "DSH 插件捕获的 deepseek-auth.json 路径；留空默认 ~/.dsh/web-login/deepseek-auth.json。"
+      }
+    ]
   },
   "permissions": {
     "egress": ["chat.deepseek.com", "fe-static.deepseek.com", "*.deepseek.com"]
