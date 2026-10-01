@@ -39,7 +39,7 @@ Core 读取已安装包的 `provider` 块，拉起子进程，并把 provider �
 
 ## 配置
 
-设置页（**设置 → DeepSeek 网页版**，由 Core 从 manifest 的 `settings` 块注册）：
+设置页（**设置 → DeepSeek 网页版**）由插件自带的**自定义 WebUI 面板**提供（`ui/panel.js` + `patches/deepseek-web.patch`，不是默认的字段表）：
 
 | 设置 | 默认 | 说明 |
 |---|---|---|
@@ -53,6 +53,10 @@ Core 读取已安装包的 `provider` 块，拉起子进程，并把 provider �
 | `auto_continue` / `max_continuations` | `true` / `2` | 句中被截断时自动续写 |
 | `session_cleanup` | `deferred` | `deferred`/`immediate`/`keep`（keep=不删临时会话） |
 | `probe_interval_ms` | `1800000` | 只读探活间隔，零额度，0=关闭 |
+| `max_ref_images` | `24` | 一次请求随附的图片上限（图片经 `file/upload_file` 上传后以 `ref_file_ids` 引用） |
+| `context_mode` | `full` | `full`=每轮回发全量；`chained`=只发增量（需请求带 `user`/`session_id`） |
+
+面板还带一个**连通性测试**按钮（调 `/api/stdio-provider/deepseek-web/v1/probe`，只读零额度）。
 
 环境变量（无设置时兜底）：`DEEPSEEK_WEB_TOKEN`、`DEEPSEEK_WEB_AUTH_FILE`。
 

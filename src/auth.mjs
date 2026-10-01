@@ -21,6 +21,8 @@ export const DEFAULTS = {
   maxContinuations: 2,
   sessionCleanup: 'deferred',
   probeIntervalMs: 1800000,
+  maxRefImages: 24,
+  contextMode: 'full',
 }
 
 let settings = { ...DEFAULTS }
@@ -64,6 +66,8 @@ export async function loadCoreSettings() {
       maxContinuations: asInt(values.max_continuations, DEFAULTS.maxContinuations),
       sessionCleanup: asString(values.session_cleanup, DEFAULTS.sessionCleanup),
       probeIntervalMs: asInt(values.probe_interval_ms, DEFAULTS.probeIntervalMs),
+      maxRefImages: asInt(values.max_ref_images, DEFAULTS.maxRefImages),
+      contextMode: asString(values.context_mode, DEFAULTS.contextMode),
     }
   } catch {
     /* keep previous */

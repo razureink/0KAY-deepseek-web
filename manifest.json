@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "name": "@razureink/0kay-deepseek-web",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "DeepSeek 网页版（chat.deepseek.com 登录态，无需 API Key）作为 OpenAI 兼容的 0KAY provider。由 Core 以 stdio 子进程承载（不监听端口）。请求/PoW/SSE 流程移植自 cv-superding/dsh-deepseek-web-login（Apache-2.0）。",
   "repository": "https://github.com/razureink/0KAY-deepseek-web.git",
   "install": [],
@@ -20,20 +20,28 @@
     "order": 82,
     "description": "DeepSeek 网页版（chat.deepseek.com 登录态）provider 设置",
     "fields": [
-      { "key": "token", "type": "text", "label": "Bearer Token", "default_value": "", "help": "F12 取 chat.deepseek.com 请求里的 Authorization（可含 Bearer）；留空则用凭据文件。" },
-      { "key": "auth_file", "type": "text", "label": "凭据文件", "default_value": "", "help": "DSH 捕获的 deepseek-auth.json 路径；留空默认 ~/.dsh/web-login/deepseek-auth.json。" },
-      { "key": "default_model", "type": "select", "label": "默认模型", "default_value": "deepseek-web-chat", "options": ["deepseek-web-chat", "deepseek-web-reasoner"], "help": "未指定模型时使用；chat=不推理，reasoner=thinking。" },
-      { "key": "max_prompt_chars", "type": "number", "label": "Prompt 字符上限", "default_value": "400000", "help": "超出走中段截断。调高会明显提高被限流风险（原版建议 40 万）。" },
-      { "key": "min_request_interval_ms", "type": "number", "label": "请求间隔下限(ms)", "default_value": "2000", "help": "两次调用之间随机间隔区间的下限（从上次结束算起）。" },
-      { "key": "max_request_interval_ms", "type": "number", "label": "请求间隔上限(ms)", "default_value": "4000", "help": "区间上限；与下限相等即固定间隔。" },
-      { "key": "allow_concurrent", "type": "bool", "label": "允许并发", "default_value": "false", "help": "同一账号并发会触发网页端临时封禁，默认串行（关闭）。" },
-      { "key": "idle_timeout_ms", "type": "number", "label": "流空闲超时(ms)", "default_value": "120000", "help": "SSE 多久没有事件即判定卡住。" },
-      { "key": "auto_continue", "type": "bool", "label": "自动续写", "default_value": "true", "help": "回答在句中被截断时自动再发一次请求续写并拼接。" },
-      { "key": "max_continuations", "type": "number", "label": "最大续写轮数", "default_value": "2", "help": "每轮是一次新的网页端请求，调高更耗免费额度。" },
-      { "key": "session_cleanup", "type": "select", "label": "临时会话清理", "default_value": "deferred", "options": ["deferred", "immediate", "keep"], "help": "keep=不删（网页端会留临时会话）；其余=调用后删除。" },
-      { "key": "probe_interval_ms", "type": "number", "label": "探活间隔(ms)", "default_value": "1800000", "help": "只读 users/current 确认登录态，零额度；0=关闭。" }
+      { "key": "token", "type": "text", "label": "Bearer Token", "default_value": "" },
+      { "key": "auth_file", "type": "text", "label": "凭据文件", "default_value": "" },
+      { "key": "default_model", "type": "select", "label": "默认模型", "default_value": "deepseek-web-chat", "options": ["deepseek-web-chat", "deepseek-web-reasoner"] },
+      { "key": "max_prompt_chars", "type": "number", "label": "Prompt 字符上限", "default_value": "400000" },
+      { "key": "min_request_interval_ms", "type": "number", "label": "请求间隔下限(ms)", "default_value": "2000" },
+      { "key": "max_request_interval_ms", "type": "number", "label": "请求间隔上限(ms)", "default_value": "4000" },
+      { "key": "allow_concurrent", "type": "bool", "label": "允许并发", "default_value": "false" },
+      { "key": "idle_timeout_ms", "type": "number", "label": "流空闲超时(ms)", "default_value": "120000" },
+      { "key": "auto_continue", "type": "bool", "label": "自动续写", "default_value": "true" },
+      { "key": "max_continuations", "type": "number", "label": "最大续写轮数", "default_value": "2" },
+      { "key": "session_cleanup", "type": "select", "label": "临时会话清理", "default_value": "deferred", "options": ["deferred", "immediate", "keep"] },
+      { "key": "probe_interval_ms", "type": "number", "label": "探活间隔(ms)", "default_value": "1800000" },
+      { "key": "max_ref_images", "type": "number", "label": "最多引用图片数", "default_value": "24" },
+      { "key": "context_mode", "type": "select", "label": "上下文投喂", "default_value": "full", "options": ["full", "chained"] }
     ]
   },
+  "ui": {
+    "dir": ".",
+    "plugin": "deepseek-web",
+    "dist": "ui"
+  },
+  "patches": ["patches/deepseek-web.patch"],
   "permissions": {
     "egress": ["chat.deepseek.com", "fe-static.deepseek.com", "*.deepseek.com"]
   }

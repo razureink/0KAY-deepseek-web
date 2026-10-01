@@ -177,6 +177,33 @@ async function deleteSession(auth, sessionId, signal) {
 }
 
 /**
+ * Upload one image to DeepSeek's web file endpoint and return its file id,
+ * for use in the completion request's `ref_file_ids`.
+ */
+export async function uploadImageFile(auth, { bytes, mime = 'image/png', name = 'image.png' }, signal) {
+  const targetPath = '/api/v0/file/upload_file'
+  const pow = await powHeader(auth, targetPath, signal)
+  const headers = buildHeaders(auth)
+  delete headers['content-type'] // let fetch set the multipart boundary
+  const form = new FormData()
+  form.append('file', new Blob([bytes], { type: mime }), name)
+  const resp = await fetch(`${DS_BASE}${targetPath}`, {
+    method: 'POST',
+    headers: { ...headers, 'x-ds-pow-response': pow },
+    body: form,
+    signal,
+  })
+  const text = await resp.text()
+  if (!resp.ok) throw new Error(`image upload HTTP ${resp.status}: ${text.slice(0, 160)}`)
+  const json = JSON.parse(text)
+  const biz = envelopeError(json)
+  if (biz) throw new Error(`image upload: ${biz.msg} (${biz.code})`)
+  const id = json?.data?.biz_data?.id ?? json?.data?.id
+  if (!id) throw new Error('image upload missing file id')
+  return String(id)
+}
+
+/**
  * Verify the login by reading the read-only `users/current` endpoint (zero quota).
  * Returns the masked account value when valid.
  */
@@ -195,9 +222,23 @@ export async function probe(auth, signal) {
  * Run one completion against the web endpoint and stream `{thinking, text}`
  * deltas. Full-transcript mode: `parent_message_id` stays null.
  */
-export async function* streamCompletion(auth, { prompt, thinking = false, modelType = 'default', signal }) {
+const chains = new Map()
+
+export async function* streamCompletion(auth, { prompt, thinking = false, modelType = 'default', signal, refFileIds = [], sessionKey = '' }) {
   const config = getSettings()
   let currentPrompt = clampPrompt(prompt, config.maxPromptChars)
+  let parentMessageId = null
+  if (config.contextMode === 'chained' && sessionKey) {
+    const chain = chains.get(sessionKey)
+    if (chain && typeof chain.prompt === 'string' && prompt.startsWith(chain.prompt) && prompt.length > chain.prompt.length && chain.messageId) {
+      const delta = prompt.slice(chain.prompt.length).trim()
+      if (delta) {
+        currentPrompt = delta
+        parentMessageId = chain.messageId
+      }
+    }
+  }
+  let firstResponseMessageId = ''
   for (let continuation = 0; ; continuation++) {
     const release = await acquireThrottle(config)
     let sessionId
@@ -214,9 +255,9 @@ export async function* streamCompletion(auth, { prompt, thinking = false, modelT
         },
         body: JSON.stringify({
           chat_session_id: sessionId,
-          parent_message_id: null,
+          parent_message_id: parentMessageId,
           prompt: currentPrompt,
-          ref_file_ids: [],
+          ref_file_ids: refFileIds,
           thinking_enabled: thinking,
           search_enabled: false,
           model_type: modelType,
@@ -229,7 +270,9 @@ export async function* streamCompletion(auth, { prompt, thinking = false, modelT
         const body = await resp.text().catch(() => '')
         throw new Error(`completion HTTP ${resp.status}: ${body.slice(0, 160)}`)
       }
-      for await (const delta of parseSSE(resp.body, config.idleTimeoutMs, signal)) {
+      for await (const delta of parseSSE(resp.body, config.idleTimeoutMs, signal, (meta) => {
+        if (!firstResponseMessageId && meta?.messageId) firstResponseMessageId = meta.messageId
+      })) {
         if (delta.text) text += delta.text
         yield delta
       }
@@ -237,7 +280,11 @@ export async function* streamCompletion(auth, { prompt, thinking = false, modelT
       if (sessionId && config.sessionCleanup !== 'keep') await deleteSession(auth, sessionId, signal)
       releaseThrottle()
     }
+    if (config.contextMode === 'chained' && sessionKey && firstResponseMessageId) {
+      chains.set(sessionKey, { prompt, messageId: firstResponseMessageId })
+    }
     if (!config.autoContinue || continuation >= config.maxContinuations || !looksTruncated(text)) return
+    parentMessageId = null
     currentPrompt = `${currentPrompt}\n\n[Assistant's partial answer]\n${text}\n\n[Continue exactly from where you stopped; do not repeat what you already wrote.]`
   }
 }
@@ -257,7 +304,7 @@ async function readWithIdle(reader, idleMs, signal) {
 }
 
 /** Parse DeepSeek's SSE patch stream into {thinking, text} deltas. */
-export async function* parseSSE(body, idleMs = 0, signal) {
+export async function* parseSSE(body, idleMs = 0, signal, onMeta) {
   const reader = body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
@@ -280,6 +327,9 @@ export async function* parseSSE(body, idleMs = 0, signal) {
           frame = JSON.parse(payload)
         } catch {
           continue
+        }
+        if (onMeta && (frame.response_message_id || frame.message_id)) {
+          onMeta({ messageId: String(frame.response_message_id || frame.message_id) })
         }
         for (const delta of frameDeltas(frame, () => lastType, (t) => { lastType = t })) yield delta
       }
@@ -340,7 +390,14 @@ export function serializePrompt(messages, tools) {
     const role = String(message.role || 'user')
     let content = message.content
     if (Array.isArray(content)) {
-      content = content.map((part) => (typeof part === 'string' ? part : part?.text || '')).join('')
+      content = content
+        .map((part) => {
+          if (typeof part === 'string') return part
+          if (part?.text) return part.text
+          if (part?.type === 'image' || part?.image_url || part?.imageUrl) return '[image]'
+          return ''
+        })
+        .join('')
     }
     lines.push(`${role === 'system' ? 'System' : role === 'assistant' ? 'Assistant' : role === 'tool' ? 'Tool' : 'User'}: ${content ?? ''}`)
   }

@@ -3,8 +3,50 @@
  * HTTP server and the stdio bridge.
  */
 import { randomUUID } from 'node:crypto'
-import { streamCompletion, serializePrompt } from './deepseek.mjs'
+import { streamCompletion, serializePrompt, uploadImageFile } from './deepseek.mjs'
 import { getSettings } from './auth.mjs'
+
+function dataUrlToImage(url) {
+  const match = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(url || '')
+  if (!match) return null
+  const mime = match[1] || 'image/png'
+  const bytes = match[2] ? Buffer.from(match[3], 'base64') : Buffer.from(decodeURIComponent(match[3]), 'utf8')
+  const ext = (mime.split('/')[1] || 'png').replace('jpeg', 'jpg')
+  return { bytes, mime, name: `image.${ext}` }
+}
+
+function collectImages(messages, limit) {
+  const out = []
+  for (const message of messages || []) {
+    const content = message?.content
+    if (!Array.isArray(content)) continue
+    for (const part of content) {
+      const url = part?.image_url?.url || (part?.type === 'image' ? part?.url || part?.imageUrl : '')
+      if (typeof url === 'string' && url.startsWith('data:')) {
+        const image = dataUrlToImage(url)
+        if (image) out.push(image)
+      }
+    }
+    if (limit && out.length >= limit) return out.slice(0, limit)
+  }
+  return out
+}
+
+/** Upload any inline images and return their DeepSeek file ids. */
+async function collectRefFileIds(auth, body) {
+  const config = getSettings()
+  if (config.maxRefImages === 0) return []
+  const images = collectImages(body.messages, config.maxRefImages || 24)
+  const ids = []
+  for (const image of images) {
+    try {
+      ids.push(await uploadImageFile(auth, image, body._signal))
+    } catch {
+      /* skip images that fail to upload */
+    }
+  }
+  return ids
+}
 
 export const MODELS = [
   { id: 'deepseek-web-chat', thinking: false },
@@ -34,7 +76,9 @@ export function modelsPayload() {
 export async function* openaiStream(auth, body) {
   const model = String(body.model || getSettings().defaultModel || MODELS[0].id)
   const prompt = serializePrompt(body.messages, body.tools)
-  for await (const delta of streamCompletion(auth, { prompt, thinking: resolveThinking(model), signal: body._signal })) {
+  const refFileIds = await collectRefFileIds(auth, body)
+  const sessionKey = String(body.user || body.session_id || '')
+  for await (const delta of streamCompletion(auth, { prompt, thinking: resolveThinking(model), signal: body._signal, refFileIds, sessionKey })) {
     if (delta.thinking) yield chunk(model, { reasoning_content: delta.thinking })
     else if (delta.text) yield chunk(model, { content: delta.text })
   }
@@ -46,9 +90,11 @@ export async function* openaiStream(auth, body) {
 export async function openaiJSON(auth, body) {
   const model = String(body.model || getSettings().defaultModel || MODELS[0].id)
   const prompt = serializePrompt(body.messages, body.tools)
+  const refFileIds = await collectRefFileIds(auth, body)
+  const sessionKey = String(body.user || body.session_id || '')
   let content = ''
   let reasoning = ''
-  for await (const delta of streamCompletion(auth, { prompt, thinking: resolveThinking(model), signal: body._signal })) {
+  for await (const delta of streamCompletion(auth, { prompt, thinking: resolveThinking(model), signal: body._signal, refFileIds, sessionKey })) {
     if (delta.thinking) reasoning += delta.thinking
     else if (delta.text) content += delta.text
   }
