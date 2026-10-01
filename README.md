@@ -1,7 +1,11 @@
 # 0KAY · DeepSeek 网页版 provider
 
 把 `chat.deepseek.com` 的网页登录态接进 0KAY：用你已登录的网页版（不是 API Key）
-驱动模型调用。对 Core 暴露一个 **OpenAI 兼容**的本地服务，并自动注册成 provider。
+驱动模型调用。对 Core 暴露一个 **OpenAI 兼容**的 provider。
+
+**由 Core 以 stdio 子进程承载 —— 不监听任何端口。** 插件 manifest 声明 `provider.stdio`，
+Core 启动时把它作为子进程拉起、在自有的 HTTP 端口上用 `/api/stdio-provider/<id>/…`
+代理，并自动注册成 provider。
 
 请求构造 / PoW（SHA3 WASM 求解）/ SSE 解析移植自
 [cv-superding/dsh-deepseek-web-login](https://github.com/cv-superding/dsh-deepseek-web-login)（Apache-2.0，见 `NOTICE`）。
@@ -9,13 +13,29 @@
 ## 工作原理
 
 ```
-mocr ──▶ http://127.0.0.1:8792/v1/chat/completions
-             │  login token（~/.dsh/web-login/deepseek-auth.json 或 DEEPSEEK_WEB_TOKEN）
-             ├─ POST /api/v0/chat_session/create
-             ├─ POST /api/v0/chat/create_pow_challenge → SHA3 WASM 求解
-             ├─ POST /api/v0/chat/completion（SSE patch 流）
-             └─ POST /api/v0/chat_session/delete
+mocr ──▶ Core: /api/stdio-provider/deepseek-web/v1/chat/completions
+             │  （Core 把请求写成 JSON 行到本子进程的 stdin）
+             ▼
+        node src/stdio.mjs  ──▶ chat.deepseek.com 私有接口
+             ├─ chat_session/create → create_pow_challenge → SHA3 WASM 求解
+             └─ chat/completion（SSE）→ 解析成 OpenAI 流 → 写回 stdout
 ```
+
+## manifest
+
+```json
+"provider": {
+  "id": "deepseek-web",
+  "name": "DeepSeek 网页版（免费）",
+  "models": ["deepseek-web-chat", "deepseek-web-reasoner"],
+  "default_model": "deepseek-web-chat",
+  "route": "/v1",
+  "stdio": ["node", "src/stdio.mjs"]
+}
+```
+
+Core 读取已安装包的 `provider` 块，拉起子进程，并把 provider 的 `base_url` 指向
+`http://127.0.0.1:<core-http-port>/api/stdio-provider/deepseek-web/v1`。
 
 ## 配置
 
@@ -23,8 +43,6 @@ mocr ──▶ http://127.0.0.1:8792/v1/chat/completions
 |---|---|---|
 | `DEEPSEEK_WEB_TOKEN` | 空 | 直接给 Bearer token（优先级最高） |
 | `DEEPSEEK_WEB_AUTH_FILE` | `~/.dsh/web-login/deepseek-auth.json` | DSH 插件捕获的凭据文件（对象或裸 token 字符串） |
-| `DEEPSEEK_WEB_PORT` | `8792` | 本地监听端口 |
-| `DEEPSEEK_WEB_CORE_HTTP` | `CORE_HTTP_ADDR` 或 `http://127.0.0.1:8080` | Core HTTP 地址 |
 
 凭据文件支持 `{token|authorization, cookie, userAgent, extraHeaders, hifDliq, hifLeim, wasmUrl}`；
 若你已用 DSH 的 dsh-deepseek-web-login 登录过，直接复用它的文件即可。
@@ -34,12 +52,13 @@ mocr ──▶ http://127.0.0.1:8792/v1/chat/completions
 - `deepseek-web-chat` — 快速模式（thinking 关）
 - `deepseek-web-reasoner` — 快速模式（thinking 开，推理流走 `reasoning_content`）
 
-## 启动
+## 调试
 
 ```bash
-node src/server.mjs          # 监听 127.0.0.1:8792 并注册 provider
-node src/register.mjs        # 只刷新注册
-curl http://127.0.0.1:8792/v1/probe   # 校验登录态（只读，零额度）
+node src/stdio.mjs                       # 由 Core 拉起时用的模式（stdin/stdout 上跑 JSON 行协议）
+node src/server.mjs                      # 本地 HTTP 模式（可选，会监听 127.0.0.1:8792）
+printf '{"id":"t","method":"GET","url":"/v1/models"}\n' | node src/stdio.mjs
+node --test test/
 ```
 
-已知限制：网页端无原生 function calling，工具调用为后续工作；`temperature`/`max_tokens` 等字段网页端忽略；usage 为估算值。
+已知限制：网页端无原生 function calling（`tools` 目前只按文本拼进 prompt）；`temperature`/`max_tokens` 等字段网页端忽略；usage 为估算值。安装插件后需**重启 Core** 才会拉起子进程。

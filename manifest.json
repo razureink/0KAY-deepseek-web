@@ -1,14 +1,19 @@
 {
   "schema": 1,
   "name": "@razureink/0kay-deepseek-web",
-  "version": "0.1.0",
-  "description": "DeepSeek 网页版（chat.deepseek.com 登录态，无需 API Key）作为 OpenAI 兼容的 0KAY provider。请求/PoW/SSE 流程移植自 cv-superding/dsh-deepseek-web-login（Apache-2.0）。",
+  "version": "0.2.0",
+  "description": "DeepSeek 网页版（chat.deepseek.com 登录态，无需 API Key）作为 OpenAI 兼容的 0KAY provider。由 Core 以 stdio 子进程承载（不监听端口）。请求/PoW/SSE 流程移植自 cv-superding/dsh-deepseek-web-login（Apache-2.0）。",
   "repository": "https://github.com/razureink/0KAY-deepseek-web.git",
   "install": [],
-  "start": ["node", "src/server.mjs"],
-  "ports": { "http": 8792 },
+  "provider": {
+    "id": "deepseek-web",
+    "name": "DeepSeek 网页版（免费）",
+    "models": ["deepseek-web-chat", "deepseek-web-reasoner"],
+    "default_model": "deepseek-web-chat",
+    "route": "/v1",
+    "stdio": ["node", "src/stdio.mjs"]
+  },
   "permissions": {
-    "api": { "requires": ["POST /api/providers"] },
     "egress": ["chat.deepseek.com", "fe-static.deepseek.com", "*.deepseek.com"]
   }
 }
