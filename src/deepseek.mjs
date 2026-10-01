@@ -5,10 +5,33 @@
  * no API key, no DOM, no reverse proxy.
  */
 
+import { getSettings } from './auth.mjs'
+import { acquire as acquireThrottle, release as releaseThrottle } from './throttle.mjs'
+
 export const DS_BASE = 'https://chat.deepseek.com'
 export const DEFAULT_WASM_URL = 'https://fe-static.deepseek.com/chat/static/sha3_wasm_bg.7b9ca65ddd.wasm'
 const FALLBACK_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+
+const TERMINAL = new Set(['。', '！', '？', '!', '?', '.', '」', '』', '”', '’', ')', '）', '】', '》'])
+const CONTINUING = new Set(['，', ',', '、', '；', ';', '：', ':'])
+
+/** Best-effort: a reply that stops on a comma/colon is probably truncated. */
+function looksTruncated(text) {
+  const trimmed = String(text || '').trimEnd()
+  if (!trimmed) return false
+  const last = trimmed[trimmed.length - 1]
+  if (CONTINUING.has(last)) return true
+  return !TERMINAL.has(last)
+}
+
+/** Cap the prompt; keep the head (system/tools) and the most recent turns. */
+function clampPrompt(prompt, maxChars) {
+  if (!maxChars || maxChars <= 0 || prompt.length <= maxChars) return prompt
+  const head = Math.floor(maxChars * 0.4)
+  const tail = maxChars - head
+  return `${prompt.slice(0, head)}\n\n[... middle of the conversation omitted ...]\n\n${prompt.slice(prompt.length - tail)}`
+}
 
 export function buildHeaders(auth, referer) {
   const headers = {
@@ -173,41 +196,68 @@ export async function probe(auth, signal) {
  * deltas. Full-transcript mode: `parent_message_id` stays null.
  */
 export async function* streamCompletion(auth, { prompt, thinking = false, modelType = 'default', signal }) {
-  const sessionId = await createSession(auth, signal)
-  try {
-    const pow = await powHeader(auth, '/api/v0/chat/completion', signal)
-    const resp = await fetch(`${DS_BASE}/api/v0/chat/completion`, {
-      method: 'POST',
-      headers: {
-        ...buildHeaders(auth, `${DS_BASE}/a/chat/s/${sessionId}`),
-        accept: 'text/event-stream',
-        'x-ds-pow-response': pow,
-      },
-      body: JSON.stringify({
-        chat_session_id: sessionId,
-        parent_message_id: null,
-        prompt,
-        ref_file_ids: [],
-        thinking_enabled: thinking,
-        search_enabled: false,
-        model_type: modelType,
-        action: null,
-        preempt: false,
-      }),
-      signal,
-    })
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => '')
-      throw new Error(`completion HTTP ${resp.status}: ${body.slice(0, 160)}`)
+  const config = getSettings()
+  let currentPrompt = clampPrompt(prompt, config.maxPromptChars)
+  for (let continuation = 0; ; continuation++) {
+    const release = await acquireThrottle(config)
+    let sessionId
+    let text = ''
+    try {
+      sessionId = await createSession(auth, signal)
+      const pow = await powHeader(auth, '/api/v0/chat/completion', signal)
+      const resp = await fetch(`${DS_BASE}/api/v0/chat/completion`, {
+        method: 'POST',
+        headers: {
+          ...buildHeaders(auth, `${DS_BASE}/a/chat/s/${sessionId}`),
+          accept: 'text/event-stream',
+          'x-ds-pow-response': pow,
+        },
+        body: JSON.stringify({
+          chat_session_id: sessionId,
+          parent_message_id: null,
+          prompt: currentPrompt,
+          ref_file_ids: [],
+          thinking_enabled: thinking,
+          search_enabled: false,
+          model_type: modelType,
+          action: null,
+          preempt: false,
+        }),
+        signal,
+      })
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => '')
+        throw new Error(`completion HTTP ${resp.status}: ${body.slice(0, 160)}`)
+      }
+      for await (const delta of parseSSE(resp.body, config.idleTimeoutMs, signal)) {
+        if (delta.text) text += delta.text
+        yield delta
+      }
+    } finally {
+      if (sessionId && config.sessionCleanup !== 'keep') await deleteSession(auth, sessionId, signal)
+      releaseThrottle()
     }
-    yield* parseSSE(resp.body, signal)
+    if (!config.autoContinue || continuation >= config.maxContinuations || !looksTruncated(text)) return
+    currentPrompt = `${currentPrompt}\n\n[Assistant's partial answer]\n${text}\n\n[Continue exactly from where you stopped; do not repeat what you already wrote.]`
+  }
+}
+
+/** Read the next chunk, aborting when the stream stalls past idleMs. */
+async function readWithIdle(reader, idleMs, signal) {
+  if (!idleMs || idleMs <= 0) return reader.read()
+  let timer
+  const idle = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('DeepSeek stream idle timeout')), idleMs)
+  })
+  try {
+    return await Promise.race([reader.read(), idle])
   } finally {
-    await deleteSession(auth, sessionId)
+    clearTimeout(timer)
   }
 }
 
 /** Parse DeepSeek's SSE patch stream into {thinking, text} deltas. */
-export async function* parseSSE(body, signal) {
+export async function* parseSSE(body, idleMs = 0, signal) {
   const reader = body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
@@ -215,7 +265,7 @@ export async function* parseSSE(body, signal) {
   try {
     for (;;) {
       if (signal?.aborted) throw signal.reason ?? new Error('aborted')
-      const { value, done } = await reader.read()
+      const { value, done } = await readWithIdle(reader, idleMs, signal)
       if (done) break
       buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n')
       let index

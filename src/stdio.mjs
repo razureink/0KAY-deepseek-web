@@ -7,7 +7,7 @@
  *                {"id","type":"chunk","data"}
  *                {"id","type":"end"} | {"id","type":"error","error"}
  */
-import { loadAuth, loadCoreSettings } from './auth.mjs'
+import { loadAuth, loadCoreSettings, getSettings } from './auth.mjs'
 import { probe } from './deepseek.mjs'
 import { modelsPayload, openaiStream, openaiJSON } from './openai.mjs'
 
@@ -15,6 +15,19 @@ import { modelsPayload, openaiStream, openaiJSON } from './openai.mjs'
 // token change in the WebUI takes effect without restarting the child.
 await loadCoreSettings().catch(() => {})
 setInterval(() => { void loadCoreSettings() }, 60000).unref()
+
+// Login-state probe (zero-quota users/current), honouring probe_interval_ms.
+let lastProbe = Date.now()
+setInterval(() => {
+  const interval = getSettings().probeIntervalMs
+  if (!interval || interval <= 0 || Date.now() - lastProbe < interval) return
+  lastProbe = Date.now()
+  const auth = loadAuth()
+  if (!auth) return
+  probe(auth)
+    .then((account) => process.stderr.write(`[deepseek-web] probe ok: ${account}\n`))
+    .catch((error) => process.stderr.write(`[deepseek-web] probe failed: ${error?.message || error}\n`))
+}, 60000).unref()
 
 const write = (obj) => process.stdout.write(JSON.stringify(obj) + '\n')
 const head = (id, status, headers = {}) => write({ id, type: 'head', status, headers })

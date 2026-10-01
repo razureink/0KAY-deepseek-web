@@ -4,6 +4,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import { streamCompletion, serializePrompt } from './deepseek.mjs'
+import { getSettings } from './auth.mjs'
 
 export const MODELS = [
   { id: 'deepseek-web-chat', thinking: false },
@@ -31,7 +32,7 @@ export function modelsPayload() {
 
 /** Stream an OpenAI-compatible SSE for a chat completion request. */
 export async function* openaiStream(auth, body) {
-  const model = String(body.model || MODELS[0].id)
+  const model = String(body.model || getSettings().defaultModel || MODELS[0].id)
   const prompt = serializePrompt(body.messages, body.tools)
   for await (const delta of streamCompletion(auth, { prompt, thinking: resolveThinking(model), signal: body._signal })) {
     if (delta.thinking) yield chunk(model, { reasoning_content: delta.thinking })
@@ -43,7 +44,7 @@ export async function* openaiStream(auth, body) {
 
 /** Non-streaming completion as an OpenAI chat.completion object. */
 export async function openaiJSON(auth, body) {
-  const model = String(body.model || MODELS[0].id)
+  const model = String(body.model || getSettings().defaultModel || MODELS[0].id)
   const prompt = serializePrompt(body.messages, body.tools)
   let content = ''
   let reasoning = ''

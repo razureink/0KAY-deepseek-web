@@ -39,13 +39,22 @@ Core 读取已安装包的 `provider` 块，拉起子进程，并把 provider �
 
 ## 配置
 
-| 变量 | 默认 | 说明 |
-|---|---|---|
-| `DEEPSEEK_WEB_TOKEN` | 空 | 直接给 Bearer token（优先级最高） |
-| `DEEPSEEK_WEB_AUTH_FILE` | `~/.dsh/web-login/deepseek-auth.json` | DSH 插件捕获的凭据文件（对象或裸 token 字符串） |
+设置页（**设置 → DeepSeek 网页版**，由 Core 从 manifest 的 `settings` 块注册）：
 
-凭据文件支持 `{token|authorization, cookie, userAgent, extraHeaders, hifDliq, hifLeim, wasmUrl}`；
-若你已用 DSH 的 dsh-deepseek-web-login 登录过，直接复用它的文件即可。
+| 设置 | 默认 | 说明 |
+|---|---|---|
+| `token` | 空 | Bearer Token（F12 从 chat.deepseek.com 请求里取） |
+| `auth_file` | 空 | 凭据文件路径（默认 `~/.dsh/web-login/deepseek-auth.json`） |
+| `default_model` | `deepseek-web-chat` | 未指定模型时使用 |
+| `max_prompt_chars` | `400000` | prompt 字符上限（中段截断） |
+| `min/max_request_interval_ms` | `2000/4000` | 两次调用的随机间隔区间（从上次结束算起） |
+| `allow_concurrent` | `false` | 同账号并发会触发临时封禁，默认串行 |
+| `idle_timeout_ms` | `120000` | SSE 空闲超时 |
+| `auto_continue` / `max_continuations` | `true` / `2` | 句中被截断时自动续写 |
+| `session_cleanup` | `deferred` | `deferred`/`immediate`/`keep`（keep=不删临时会话） |
+| `probe_interval_ms` | `1800000` | 只读探活间隔，零额度，0=关闭 |
+
+环境变量（无设置时兜底）：`DEEPSEEK_WEB_TOKEN`、`DEEPSEEK_WEB_AUTH_FILE`。
 
 ## 模型
 
